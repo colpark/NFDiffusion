@@ -1,0 +1,307 @@
+# New cells to add after cell-15 in local_implicit_diffusion.ipynb
+
+## Cell 16 (markdown)
+## 6. Scale-Invariant Evaluation
+
+**Test hypothesis**: If the model learned truly continuous representations via Fourier features, it should generalize to arbitrary resolutions.
+
+We'll test on:
+- **32x32** (native training resolution)
+- **64x64** (2x upsampling)
+- **96x96** (3x upsampling)
+
+This tests whether the model learned spatial structure or just memorized pixel locations.
+
+## Cell 17 (code)
+def create_multi_scale_grids(device='cuda'):
+    """Create coordinate grids at different resolutions"""
+    grids = {}
+
+    for size in [32, 64, 96]:
+        y, x = torch.meshgrid(
+            torch.linspace(0, 1, size),
+            torch.linspace(0, 1, size),
+            indexing='ij'
+        )
+        grids[size] = torch.stack([x.flatten(), y.flatten()], dim=-1).to(device)
+
+    return grids
+
+# Create grids
+multi_scale_grids = create_multi_scale_grids(device)
+
+print("Multi-scale coordinate grids:")
+for size, grid in multi_scale_grids.items():
+    print(f"  {size}x{size}: {grid.shape} ({size**2} pixels)")
+
+## Cell 18 (markdown)
+### Multi-Scale Reconstruction
+
+Sample the model at 32x32, 64x64, and 96x96 resolutions using the same sparse input (20% of 32x32).
+
+## Cell 19 (code)
+@torch.no_grad()
+def multi_scale_reconstruction(model, input_coords, input_values, grids, num_steps=100, device='cuda'):
+    """
+    Reconstruct at multiple scales
+
+    Args:
+        model: Trained model
+        input_coords: (B, N_in, 2) - sparse inputs
+        input_values: (B, N_in, 3) - sparse RGB values
+        grids: Dict of {size: coordinates}
+        num_steps: ODE solver steps
+
+    Returns:
+        Dict of {size: reconstructed_images}
+    """
+    model.eval()
+    B = input_coords.shape[0]
+
+    reconstructions = {}
+
+    for size, coords in grids.items():
+        print(f"Reconstructing at {size}x{size}...")
+
+        # Expand coords for batch
+        coords_batch = coords.unsqueeze(0).expand(B, -1, -1)
+
+        # Sample
+        pred_values = heun_sample(
+            model, coords_batch, input_coords, input_values,
+            num_steps=num_steps, device=device
+        )
+
+        # Reshape to image
+        pred_images = pred_values.view(B, size, size, 3).permute(0, 3, 1, 2)
+        reconstructions[size] = pred_images
+
+    return reconstructions
+
+# Test on a batch
+test_batch = next(iter(test_loader))
+B_test = 4
+
+multi_scale_results = multi_scale_reconstruction(
+    model,
+    test_batch['input_coords'][:B_test].to(device),
+    test_batch['input_values'][:B_test].to(device),
+    multi_scale_grids,
+    num_steps=100,
+    device=device
+)
+
+print("\nMulti-scale reconstruction complete!")
+for size, imgs in multi_scale_results.items():
+    print(f"  {size}x{size}: {imgs.shape}")
+
+## Cell 20 (markdown)
+### Visualization: Scale-Invariant Reconstruction
+
+Compare the same image reconstructed at different resolutions.
+
+## Cell 21 (code)
+def visualize_multi_scale(ground_truth, sparse_input_img, multi_scale_results, sample_idx=0):
+    """
+    Visualize multi-scale reconstructions
+
+    Args:
+        ground_truth: (3, 32, 32) original image
+        sparse_input_img: (3, 32, 32) sparse input visualization
+        multi_scale_results: Dict {size: (B, 3, size, size)}
+        sample_idx: Which sample to visualize
+    """
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+
+    # Row 1: Inputs and 32x32
+    axes[0, 0].imshow(ground_truth.permute(1, 2, 0).cpu().numpy())
+    axes[0, 0].set_title('Ground Truth (32x32)', fontsize=12, fontweight='bold')
+    axes[0, 0].axis('off')
+
+    axes[0, 1].imshow(sparse_input_img.permute(1, 2, 0).cpu().numpy())
+    axes[0, 1].set_title('Sparse Input (20%)', fontsize=12, fontweight='bold')
+    axes[0, 1].axis('off')
+
+    img_32 = multi_scale_results[32][sample_idx].permute(1, 2, 0).cpu().numpy()
+    axes[0, 2].imshow(np.clip(img_32, 0, 1))
+    axes[0, 2].set_title('Reconstructed 32x32\n(Native Resolution)', fontsize=12, fontweight='bold')
+    axes[0, 2].axis('off')
+
+    # Row 2: Upsampled versions
+    img_64 = multi_scale_results[64][sample_idx].permute(1, 2, 0).cpu().numpy()
+    axes[1, 0].imshow(np.clip(img_64, 0, 1))
+    axes[1, 0].set_title('Reconstructed 64x64\n(2x Upsampling)', fontsize=12, fontweight='bold')
+    axes[1, 0].axis('off')
+
+    img_96 = multi_scale_results[96][sample_idx].permute(1, 2, 0).cpu().numpy()
+    axes[1, 1].imshow(np.clip(img_96, 0, 1))
+    axes[1, 1].set_title('Reconstructed 96x96\n(3x Upsampling)', fontsize=12, fontweight='bold')
+    axes[1, 1].axis('off')
+
+    # Comparison: 32 vs 64 (zoomed detail)
+    # Upsample 32 to 64 with nearest neighbor for fair comparison
+    img_32_up = torch.nn.functional.interpolate(
+        multi_scale_results[32][sample_idx:sample_idx+1],
+        size=64, mode='nearest'
+    )[0].permute(1, 2, 0).cpu().numpy()
+
+    axes[1, 2].imshow(np.clip(img_32_up, 0, 1))
+    axes[1, 2].set_title('32x32 Upsampled to 64x64\n(Nearest Neighbor)', fontsize=12, fontweight='bold')
+    axes[1, 2].axis('off')
+
+    plt.suptitle('Scale-Invariant Continuous Field Reconstruction', fontsize=16, fontweight='bold', y=0.98)
+    plt.tight_layout()
+
+    return fig
+
+# Visualize multiple samples
+for i in range(min(B_test, 4)):
+    # Create sparse input visualization
+    sparse_img = torch.zeros(3, 32, 32)
+    input_idx = test_batch['input_indices'][i]
+    sparse_img.view(3, -1)[:, input_idx] = test_batch['input_values'][i].T
+
+    fig = visualize_multi_scale(
+        test_batch['full_image'][i],
+        sparse_img,
+        multi_scale_results,
+        sample_idx=i
+    )
+    plt.savefig(f'local_implicit_multiscale_sample_{i}.png', dpi=150, bbox_inches='tight')
+    plt.show()
+    plt.close()
+
+## Cell 22 (markdown)
+### Analysis: Scale Invariance Quality
+
+Compare reconstruction quality at different scales. Note that we can only compute metrics at 32x32 (where we have ground truth).
+
+## Cell 23 (code)
+# Quantitative evaluation at native resolution (32x32)
+print("="*60)
+print("QUANTITATIVE EVALUATION: Full Field Reconstruction at 32x32")
+print("="*60)
+
+model.eval()
+tracker_full_field = MetricsTracker()
+
+with torch.no_grad():
+    for i, batch in enumerate(tqdm(test_loader, desc="Full field evaluation")):
+        if i >= 100:  # Evaluate on 100 batches
+            break
+
+        B = batch['input_coords'].shape[0]
+        full_coords_batch = multi_scale_grids[32].unsqueeze(0).expand(B, -1, -1)
+
+        pred_values = heun_sample(
+            model, full_coords_batch,
+            batch['input_coords'].to(device),
+            batch['input_values'].to(device),
+            num_steps=100, device=device
+        )
+
+        pred_images = pred_values.view(B, 32, 32, 3).permute(0, 3, 1, 2)
+        tracker_full_field.update(None, None, pred_images, batch['full_image'].to(device))
+
+results = tracker_full_field.compute()
+results_std = tracker_full_field.compute_std()
+
+print(f"\nFull Field Reconstruction (32x32):")
+print(f"  PSNR: {results['psnr']:.2f} ± {results_std['psnr_std']:.2f} dB")
+print(f"  SSIM: {results['ssim']:.4f} ± {results_std['ssim_std']:.4f}")
+print(f"  MSE:  {results['mse']:.6f} ± {results_std['mse_std']:.6f}")
+print(f"  MAE:  {results['mae']:.6f} ± {results_std['mae_std']:.6f}")
+
+## Cell 24 (markdown)
+### Qualitative Analysis: Scale Invariance
+
+**Key Observations to Look For:**
+
+1. **Sharpness at higher resolutions**: If the model learned continuous features, 64x64 and 96x96 should look sharper than simply upsampling 32x32
+2. **Artifact patterns**: New artifacts appearing at higher resolutions suggest overfitting to 32x32 grid
+3. **Feature coherence**: Colors, edges, and textures should remain consistent across scales
+4. **Detail emergence**: Higher resolutions should reveal finer details (if the model truly learned continuous representations)
+
+**What Success Looks Like:**
+- 64x64 and 96x96 look natural and smooth (not pixelated)
+- Better quality than nearest-neighbor upsampling of 32x32
+- No grid-aligned artifacts
+- Consistent colors and structures across scales
+
+**What Failure Looks Like:**
+- Grid artifacts visible at 64x64/96x96
+- Quality similar to or worse than upsampled 32x32
+- Distorted colors or structures at higher resolutions
+- Model "confused" by off-grid coordinates
+
+## Cell 25 (code)
+# Side-by-side comparison: Native continuous reconstruction vs upsampled
+def compare_upsampling_methods(multi_scale_results, sample_idx=0):
+    """Compare continuous reconstruction vs traditional upsampling"""
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+
+    # Original 32x32
+    img_32 = multi_scale_results[32][sample_idx].permute(1, 2, 0).cpu().numpy()
+    axes[0, 0].imshow(np.clip(img_32, 0, 1))
+    axes[0, 0].set_title('32x32 Original', fontsize=14, fontweight='bold')
+    axes[0, 0].axis('off')
+
+    # Traditional upsampling: Nearest Neighbor to 64x64
+    img_32_nn_64 = torch.nn.functional.interpolate(
+        multi_scale_results[32][sample_idx:sample_idx+1],
+        size=64, mode='nearest'
+    )[0].permute(1, 2, 0).cpu().numpy()
+    axes[0, 1].imshow(np.clip(img_32_nn_64, 0, 1))
+    axes[0, 1].set_title('64x64 Nearest Neighbor\n(Traditional)', fontsize=14, fontweight='bold')
+    axes[0, 1].axis('off')
+
+    # Traditional upsampling: Bilinear to 64x64
+    img_32_bi_64 = torch.nn.functional.interpolate(
+        multi_scale_results[32][sample_idx:sample_idx+1],
+        size=64, mode='bilinear', align_corners=False
+    )[0].permute(1, 2, 0).cpu().numpy()
+    axes[0, 2].imshow(np.clip(img_32_bi_64, 0, 1))
+    axes[0, 2].set_title('64x64 Bilinear\n(Traditional)', fontsize=14, fontweight='bold')
+    axes[0, 2].axis('off')
+
+    # Continuous reconstruction at 64x64
+    img_64_cont = multi_scale_results[64][sample_idx].permute(1, 2, 0).cpu().numpy()
+    axes[1, 0].imshow(np.clip(img_64_cont, 0, 1))
+    axes[1, 0].set_title('64x64 Continuous Field\n(Our Method)', fontsize=14, fontweight='bold', color='green')
+    axes[1, 0].axis('off')
+
+    # Continuous reconstruction at 96x96
+    img_96_cont = multi_scale_results[96][sample_idx].permute(1, 2, 0).cpu().numpy()
+    axes[1, 1].imshow(np.clip(img_96_cont, 0, 1))
+    axes[1, 1].set_title('96x96 Continuous Field\n(Our Method)', fontsize=14, fontweight='bold', color='green')
+    axes[1, 1].axis('off')
+
+    # Bilinear upsampling to 96x96 for comparison
+    img_32_bi_96 = torch.nn.functional.interpolate(
+        multi_scale_results[32][sample_idx:sample_idx+1],
+        size=96, mode='bilinear', align_corners=False
+    )[0].permute(1, 2, 0).cpu().numpy()
+    axes[1, 2].imshow(np.clip(img_32_bi_96, 0, 1))
+    axes[1, 2].set_title('96x96 Bilinear\n(Traditional)', fontsize=14, fontweight='bold')
+    axes[1, 2].axis('off')
+
+    plt.suptitle('Continuous Field Reconstruction vs Traditional Upsampling',
+                 fontsize=16, fontweight='bold', y=0.98)
+    plt.tight_layout()
+
+    return fig
+
+for i in range(min(B_test, 2)):
+    fig = compare_upsampling_methods(multi_scale_results, sample_idx=i)
+    plt.savefig(f'local_implicit_upsampling_comparison_{i}.png', dpi=150, bbox_inches='tight')
+    plt.show()
+    plt.close()
+
+print("\n" + "="*60)
+print("SCALE-INVARIANCE TEST COMPLETE")
+print("="*60)
+print("\nConclusion:")
+print("If the continuous field reconstructions look smoother and sharper than")
+print("traditional upsampling methods, the model has successfully learned")
+print("scale-invariant continuous representations via Fourier features!")
