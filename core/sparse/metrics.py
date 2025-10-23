@@ -249,6 +249,9 @@ def visualize_predictions(
 
     n_samples = min(n_samples, input_coords.shape[0])
 
+    # Get device from input tensors
+    device = input_values.device
+
     fig, axes = plt.subplots(n_samples, 5, figsize=(20, 4 * n_samples))
     if n_samples == 1:
         axes = axes.reshape(1, -1)
@@ -267,21 +270,21 @@ def visualize_predictions(
         axes[i, 0].axis('off')
 
         # Input pixels
-        input_img = torch.zeros(3, image_size, image_size)
+        input_img = torch.zeros(3, image_size, image_size, device=device)
         input_img.view(3, -1)[:, input_idx] = input_values[i].T
         axes[i, 1].imshow(input_img.permute(1, 2, 0).cpu().numpy())
         axes[i, 1].set_title(f'Input ({len(input_idx)} pixels)')
         axes[i, 1].axis('off')
 
         # Target output pixels
-        target_img = torch.zeros(3, image_size, image_size)
+        target_img = torch.zeros(3, image_size, image_size, device=device)
         target_img.view(3, -1)[:, output_idx] = target_values[i].T
         axes[i, 2].imshow(target_img.permute(1, 2, 0).cpu().numpy())
         axes[i, 2].set_title(f'Target Output ({len(output_idx)} pixels)')
         axes[i, 2].axis('off')
 
         # Predicted output pixels
-        pred_img = torch.zeros(3, image_size, image_size)
+        pred_img = torch.zeros(3, image_size, image_size, device=device)
         pred_img.view(3, -1)[:, output_idx] = pred_values[i].T
         axes[i, 3].imshow(pred_img.permute(1, 2, 0).cpu().numpy())
         axes[i, 3].set_title('Predicted Output')
@@ -289,7 +292,7 @@ def visualize_predictions(
 
         # Error map
         error = torch.abs(pred_values[i] - target_values[i]).mean(dim=-1)  # (N_out,)
-        error_img = torch.zeros(image_size, image_size)
+        error_img = torch.zeros(image_size, image_size, device=device)
         error_img.view(-1)[output_idx] = error
         im = axes[i, 4].imshow(error_img.cpu().numpy(), cmap='hot', vmin=0, vmax=0.5)
         axes[i, 4].set_title(f'Error Map (MAE={error.mean():.3f})')
