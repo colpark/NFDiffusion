@@ -143,9 +143,9 @@ class SparseCIFAR10Dataset(Dataset):
 
         return {
             'input_coords': torch.from_numpy(input_coords),
-            'input_values': input_values.T,  # Transpose to (N_in, 3)
+            'input_values': input_values,  # Already (N_in, 3)
             'output_coords': torch.from_numpy(output_coords),
-            'output_values': output_values.T,  # Transpose to (N_out, 3)
+            'output_values': output_values,  # Already (N_out, 3)
             'full_image': image,
             'label': label,
             'input_indices': torch.from_numpy(input_idx).long(),
