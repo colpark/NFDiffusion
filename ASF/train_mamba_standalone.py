@@ -403,10 +403,11 @@ def train_flow_matching(
         scheduler.step()
 
         log_msg = f"Epoch {epoch+1}/{epochs}: Loss = {avg_loss:.6f}, LR = {scheduler.get_last_lr()[0]:.6f}"
-        print(log_msg)
+        print(log_msg, flush=True)  # flush=True ensures immediate output
 
         with open(log_file, 'a') as f:
             f.write(log_msg + "\n")
+            f.flush()  # Ensure logs are written immediately
 
         # Evaluation
         val_loss = None
@@ -431,10 +432,11 @@ def train_flow_matching(
                 results = tracker.compute()
                 val_loss = val_loss_accum / val_batches
                 eval_msg = f"  Eval - MSE: {results['mse']:.6f}, MAE: {results['mae']:.6f}, Val Loss: {val_loss:.6f}"
-                print(eval_msg)
+                print(eval_msg, flush=True)
 
                 with open(log_file, 'a') as f:
                     f.write(eval_msg + "\n")
+                    f.flush()
 
                 # Save best model
                 if val_loss < best_val_loss:
@@ -449,9 +451,10 @@ def train_flow_matching(
                         'best_val_loss': best_val_loss
                     }, os.path.join(save_dir, 'mamba_best.pth'))
                     best_msg = f"  ✓ Saved best model (val_loss: {val_loss:.6f})"
-                    print(best_msg)
+                    print(best_msg, flush=True)
                     with open(log_file, 'a') as f:
                         f.write(best_msg + "\n")
+                        f.flush()
 
         # Save periodic checkpoint (every save_every epochs)
         if (epoch + 1) % save_every == 0:
@@ -466,9 +469,10 @@ def train_flow_matching(
                 'best_val_loss': best_val_loss
             }, checkpoint_path)
             save_msg = f"  ✓ Saved checkpoint: {checkpoint_path}"
-            print(save_msg)
+            print(save_msg, flush=True)
             with open(log_file, 'a') as f:
                 f.write(save_msg + "\n")
+                f.flush()
 
         # Save latest model (always)
         torch.save({
@@ -577,17 +581,17 @@ def main():
     args = parser.parse_args()
 
     # Device setup with detailed diagnostics
-    print("=" * 60)
-    print("DEVICE SETUP")
-    print("=" * 60)
-    print(f"PyTorch version: {torch.__version__}")
-    print(f"CUDA available: {torch.cuda.is_available()}")
-    print(f"Requested device: {args.device}")
+    print("=" * 60, flush=True)
+    print("DEVICE SETUP", flush=True)
+    print("=" * 60, flush=True)
+    print(f"PyTorch version: {torch.__version__}", flush=True)
+    print(f"CUDA available: {torch.cuda.is_available()}", flush=True)
+    print(f"Requested device: {args.device}", flush=True)
 
     # Determine device based on args
     if args.device == 'cpu':
         device = torch.device('cpu')
-        print(f"\n✓ Using CPU (forced by --device cpu)")
+        print(f"\n✓ Using CPU (forced by --device cpu)", flush=True)
     elif args.device == 'cuda':
         if torch.cuda.is_available():
             print(f"CUDA version: {torch.version.cuda}")
@@ -601,7 +605,7 @@ def main():
             torch.cuda.set_device(0)
             # Enable CUDA optimizations
             torch.backends.cudnn.benchmark = True
-            print(f"\n✓ Using GPU: {torch.cuda.get_device_name(0)}")
+            print(f"\n✓ Using GPU: {torch.cuda.get_device_name(0)}", flush=True)
         else:
             print(f"\n❌ ERROR: --device cuda specified but CUDA not available!")
             print("   Falling back to CPU")
@@ -619,7 +623,7 @@ def main():
             torch.cuda.set_device(0)
             # Enable CUDA optimizations
             torch.backends.cudnn.benchmark = True
-            print(f"\n✓ Using GPU: {torch.cuda.get_device_name(0)}")
+            print(f"\n✓ Using GPU: {torch.cuda.get_device_name(0)}", flush=True)
         else:
             device = torch.device('cpu')
             print(f"\n⚠️  CUDA not available - falling back to CPU")
