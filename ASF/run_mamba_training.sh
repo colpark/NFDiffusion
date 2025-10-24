@@ -23,6 +23,7 @@ SAVE_DIR=${SAVE_DIR:-"checkpoints_mamba"}
 D_MODEL=${D_MODEL:-512}
 NUM_LAYERS=${NUM_LAYERS:-6}
 NUM_WORKERS=${NUM_WORKERS:-4}
+DEVICE=${DEVICE:-"auto"}
 
 # Print configuration
 echo "============================================================"
@@ -33,6 +34,7 @@ echo "Log file: ${LOG_FILE}"
 echo "PID file: ${PID_FILE}"
 echo ""
 echo "Training Configuration:"
+echo "  Device: ${DEVICE}"
 echo "  Epochs: ${EPOCHS}"
 echo "  Batch size: ${BATCH_SIZE}"
 echo "  Learning rate: ${LR}"
@@ -69,6 +71,7 @@ echo "   Logs will be written to: ${LOG_FILE}"
 echo ""
 
 nohup python train_mamba_standalone.py \
+    --device ${DEVICE} \
     --epochs ${EPOCHS} \
     --batch_size ${BATCH_SIZE} \
     --lr ${LR} \

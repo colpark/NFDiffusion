@@ -572,14 +572,63 @@ def main():
     parser.add_argument('--d_model', type=int, default=512, help='Model dimension (default: 512)')
     parser.add_argument('--num_layers', type=int, default=6, help='Number of layers (default: 6)')
     parser.add_argument('--num_workers', type=int, default=4, help='DataLoader workers (default: 4)')
+    parser.add_argument('--device', type=str, default='auto', choices=['auto', 'cuda', 'cpu'],
+                        help='Device to use: auto (default), cuda, or cpu')
     args = parser.parse_args()
 
-    # Device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    if device.type == 'cuda':
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
-        print(f"Available memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+    # Device setup with detailed diagnostics
+    print("=" * 60)
+    print("DEVICE SETUP")
+    print("=" * 60)
+    print(f"PyTorch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    print(f"Requested device: {args.device}")
+
+    # Determine device based on args
+    if args.device == 'cpu':
+        device = torch.device('cpu')
+        print(f"\n✓ Using CPU (forced by --device cpu)")
+    elif args.device == 'cuda':
+        if torch.cuda.is_available():
+            print(f"CUDA version: {torch.version.cuda}")
+            print(f"Number of GPUs: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
+                props = torch.cuda.get_device_properties(i)
+                print(f"    Memory: {props.total_memory / 1e9:.2f} GB")
+                print(f"    Compute Capability: {props.major}.{props.minor}")
+            device = torch.device('cuda:0')
+            torch.cuda.set_device(0)
+            # Enable CUDA optimizations
+            torch.backends.cudnn.benchmark = True
+            print(f"\n✓ Using GPU: {torch.cuda.get_device_name(0)}")
+        else:
+            print(f"\n❌ ERROR: --device cuda specified but CUDA not available!")
+            print("   Falling back to CPU")
+            device = torch.device('cpu')
+    else:  # auto
+        if torch.cuda.is_available():
+            print(f"CUDA version: {torch.version.cuda}")
+            print(f"Number of GPUs: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
+                props = torch.cuda.get_device_properties(i)
+                print(f"    Memory: {props.total_memory / 1e9:.2f} GB")
+                print(f"    Compute Capability: {props.major}.{props.minor}")
+            device = torch.device('cuda:0')
+            torch.cuda.set_device(0)
+            # Enable CUDA optimizations
+            torch.backends.cudnn.benchmark = True
+            print(f"\n✓ Using GPU: {torch.cuda.get_device_name(0)}")
+        else:
+            device = torch.device('cpu')
+            print(f"\n⚠️  CUDA not available - falling back to CPU")
+            print("   To use GPU, ensure:")
+            print("   1. NVIDIA GPU is installed")
+            print("   2. CUDA drivers are installed")
+            print("   3. PyTorch with CUDA support is installed")
+            print("      pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118")
+    print("=" * 60 + "\n")
 
     # Load dataset
     print("Loading CIFAR-10 dataset...")
