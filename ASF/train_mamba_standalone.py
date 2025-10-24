@@ -17,7 +17,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 import math
 import argparse
 from datetime import datetime
@@ -373,7 +372,7 @@ def train_flow_matching(
         model.train()
         epoch_loss = 0
 
-        for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", leave=False):
+        for batch in train_loader:
             input_coords = batch['input_coords'].to(device)
             input_values = batch['input_values'].to(device)
             output_coords = batch['output_coords'].to(device)
@@ -577,7 +576,10 @@ def main():
 
     # Device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Device: {device}")
+    print(f"Using device: {device}")
+    if device.type == 'cuda':
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"Available memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
 
     # Load dataset
     print("Loading CIFAR-10 dataset...")
