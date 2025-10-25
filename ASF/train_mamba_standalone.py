@@ -306,6 +306,109 @@ def heun_sample(model, output_coords, input_coords, input_values, num_steps=50, 
     return torch.clamp(x_t, 0, 1)
 
 
+@torch.no_grad()
+def sde_sample(model, output_coords, input_coords, input_values,
+               num_steps=50, temperature=0.5, device='cuda'):
+    """
+    SDE sampling with Langevin dynamics for smoother results
+
+    Key improvements over ODE sampling:
+    - Adds stochastic correction at each step
+    - Reduces speckled artifacts and background noise
+    - Temperature controls exploration vs exploitation
+    - Annealed noise schedule for quality
+
+    Args:
+        model: MAMBA diffusion model
+        output_coords: (B, N_out, 2) query coordinates
+        input_coords: (B, N_in, 2) sparse input coordinates
+        input_values: (B, N_in, 3) sparse input RGB values
+        num_steps: Number of sampling steps (default: 50)
+        temperature: Noise scale, higher = more exploration (default: 0.5)
+        device: Device to run on
+
+    Returns:
+        Generated RGB values: (B, N_out, 3)
+    """
+    B, N_out = output_coords.shape[0], output_coords.shape[1]
+    x_t = torch.randn(B, N_out, 3, device=device)
+
+    dt = 1.0 / num_steps
+    ts = torch.linspace(0, 1 - dt, num_steps)
+
+    for i, t_val in enumerate(ts):
+        t = torch.full((B,), t_val.item(), device=device)
+
+        # Predict velocity
+        v_pred = model(x_t, output_coords, t, input_coords, input_values)
+
+        # Deterministic step (flow matching)
+        x_t = x_t + dt * v_pred
+
+        # Stochastic correction (Langevin dynamics)
+        # Don't add noise in final steps for clean output
+        if i < num_steps - 5:
+            # Annealed noise: decreases over time for quality
+            noise_scale = temperature * np.sqrt(dt) * (1 - t_val.item())
+            noise = torch.randn_like(x_t) * noise_scale
+            x_t = x_t + noise
+
+    return torch.clamp(x_t, 0, 1)
+
+
+@torch.no_grad()
+def ddim_sample(model, output_coords, input_coords, input_values,
+                num_steps=50, eta=0.0, device='cuda'):
+    """
+    DDIM-style sampling with non-uniform timesteps for flow matching
+
+    Key improvements:
+    - Non-uniform schedule: more steps early in denoising
+    - Configurable stochasticity via eta parameter
+    - Faster convergence with fewer steps
+    - eta=0: deterministic, eta=1: more stochastic
+
+    Args:
+        model: MAMBA diffusion model
+        output_coords: (B, N_out, 2) query coordinates
+        input_coords: (B, N_in, 2) sparse input coordinates
+        input_values: (B, N_in, 3) sparse input RGB values
+        num_steps: Number of sampling steps (default: 50)
+        eta: Stochasticity parameter, 0=deterministic, 1=stochastic (default: 0.0)
+        device: Device to run on
+
+    Returns:
+        Generated RGB values: (B, N_out, 3)
+    """
+    B, N_out = output_coords.shape[0], output_coords.shape[1]
+    x_t = torch.randn(B, N_out, 3, device=device)
+
+    # Non-uniform timestep schedule (quadratic: more steps early)
+    timesteps = torch.pow(torch.linspace(0, 1, num_steps, device=device), 2)
+
+    for i in range(len(timesteps) - 1):
+        t_curr = timesteps[i]
+        t_next = timesteps[i + 1]
+        dt = t_next - t_curr
+
+        t = torch.full((B,), t_curr.item(), device=device)
+
+        # Predict velocity
+        v_pred = model(x_t, output_coords, t, input_coords, input_values)
+
+        # DDIM step
+        x_pred = x_t + dt * v_pred
+
+        # Optional stochasticity
+        if eta > 0 and i < len(timesteps) - 2:
+            sigma = eta * torch.sqrt(dt)
+            x_t = x_pred + sigma * torch.randn_like(x_pred)
+        else:
+            x_t = x_pred
+
+    return torch.clamp(x_t, 0, 1)
+
+
 # ============================================================================
 # Training Loop (Modified for long training + periodic saves)
 # ============================================================================
