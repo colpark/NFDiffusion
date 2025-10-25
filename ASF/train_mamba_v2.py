@@ -2,9 +2,9 @@
 MAMBA Diffusion V2 - Improved Architecture for Reduced Speckle Artifacts
 
 Key improvements:
-1. Bidirectional MAMBA (2 forward + 2 backward) for full context
+1. Bidirectional MAMBA (4 forward + 4 backward = 8 total layers) for full context
 2. Lightweight Perceiver (2 iterations) with query self-attention for spatial coherence
-3. Same computational complexity as original (~14% increase)
+3. Increased depth for better spatial coherence
 
 Expected improvements:
 - 70-80% reduction in background speckles
@@ -59,12 +59,12 @@ class BidirectionalMAMBA(nn.Module):
     - Better spatial propagation for coherent fields
     - Same total layers as unidirectional, just split
     """
-    def __init__(self, d_model, num_layers=4, d_state=16, dropout=0.1):
+    def __init__(self, d_model, num_layers=8, d_state=16, dropout=0.1):
         super().__init__()
 
         # Split layers: half forward, half backward
-        self.num_forward = num_layers // 2  # 2 layers
-        self.num_backward = num_layers // 2  # 2 layers
+        self.num_forward = num_layers // 2  # 4 layers
+        self.num_backward = num_layers // 2  # 4 layers
 
         print(f"  Bidirectional MAMBA: {self.num_forward} forward + {self.num_backward} backward layers")
 
@@ -207,7 +207,7 @@ class MAMBADiffusionV2(nn.Module):
     MAMBA Diffusion V2 with bidirectional processing and spatial coherence
 
     Architecture improvements:
-    1. Bidirectional MAMBA: 2 forward + 2 backward layers
+    1. Bidirectional MAMBA: 4 forward + 4 backward = 8 total layers
     2. Lightweight Perceiver: 2 iterations with query self-attention
     3. Same interface as V1 for easy comparison
 
@@ -224,7 +224,7 @@ class MAMBADiffusionV2(nn.Module):
         self,
         num_fourier_feats=256,
         d_model=256,  # Changed default from 512 to 256
-        num_layers=4,  # Changed default from 6 to 4
+        num_layers=8,  # Changed default from 6 to 8 (4 forward + 4 backward)
         d_state=16,
         dropout=0.1,
         perceiver_iterations=2,

@@ -21,7 +21,7 @@ EVAL_EVERY=${EVAL_EVERY:-10}
 VISUALIZE_EVERY=${VISUALIZE_EVERY:-50}
 SAVE_DIR=${SAVE_DIR:-"checkpoints_mamba_v2"}
 D_MODEL=${D_MODEL:-256}  # Changed from 512 to 256
-NUM_LAYERS=${NUM_LAYERS:-4}  # Changed from 6 to 4
+NUM_LAYERS=${NUM_LAYERS:-8}  # Total layers: 4 forward + 4 backward
 NUM_WORKERS=${NUM_WORKERS:-4}
 DEVICE=${DEVICE:-"auto"}
 
@@ -34,7 +34,7 @@ echo "Log file: ${LOG_FILE}"
 echo "PID file: ${PID_FILE}"
 echo ""
 echo "V2 Improvements:"
-echo "  ✓ Bidirectional MAMBA (2 forward + 2 backward)"
+echo "  ✓ Bidirectional MAMBA (4 forward + 4 backward = 8 total layers)"
 echo "  ✓ Lightweight Perceiver (2 iterations)"
 echo "  ✓ Query self-attention for spatial coherence"
 echo ""

@@ -1,6 +1,6 @@
 # MAMBA Diffusion V2 - Architecture Improvements
 
-Improved architecture to eliminate speckled/noisy backgrounds through bidirectional processing and spatial coherence.
+Improved architecture to eliminate speckled/noisy backgrounds through bidirectional processing (8 total layers: 4 forward + 4 backward) and spatial coherence.
 
 ---
 
@@ -20,7 +20,7 @@ Improved architecture to eliminate speckled/noisy backgrounds through bidirectio
 
 ## ✨ V2 Architecture Improvements
 
-### **1. Bidirectional MAMBA** (2 forward + 2 backward)
+### **1. Bidirectional MAMBA** (4 forward + 4 backward = 8 total)
 
 ```python
 # V1: Unidirectional
@@ -28,15 +28,15 @@ for block in mamba_blocks:  # 6 layers forward only
     seq = block(seq)
 
 # V2: Bidirectional
-x_forward = process_forward(x, layers=[0,1])   # 2 layers →
-x_backward = process_backward(x, layers=[2,3])  # 2 layers ←
-x = combine(x_forward, x_backward)              # Full context!
+x_forward = process_forward(x, layers=[0,1,2,3])   # 4 layers →
+x_backward = process_backward(x, layers=[4,5,6,7])  # 4 layers ←
+x = combine(x_forward, x_backward)                  # Full context!
 ```
 
 **Benefits**:
 - Every pixel sees context from BOTH directions
 - Better spatial propagation
-- Same total layers (4), just bidirectional
+- Increased depth (8 layers) for better coherence
 
 ---
 
@@ -69,13 +69,13 @@ for iteration in [1, 2]:
 
 | Component | V1 | V2 | Change |
 |-----------|----|----|--------|
-| MAMBA | 6 layers forward | 2 forward + 2 backward | Same compute |
+| MAMBA | 6 layers forward | 4 forward + 4 backward | +33% compute |
 | Cross-attention | 1 layer | 2 iterations × 2 attn | +1x compute |
-| **Total** | **7x** | **8x** | **+14% only** |
+| **Total** | **7x** | **12x** | **+71% compute** |
 | **d_model** | 512 | 256 | Half dimensions |
-| **Parameters** | ~15M | ~5M | **67% fewer!** |
+| **Parameters** | ~15M | ~7M | **53% fewer!** |
 
-**Result**: Similar or lower computational cost with better quality!
+**Result**: More compute for better quality, but fewer parameters due to reduced d_model!
 
 ---
 
@@ -88,7 +88,7 @@ for iteration in [1, 2]:
 ./run_mamba_v2_training.sh
 
 # Custom settings
-D_MODEL=256 NUM_LAYERS=4 ./run_mamba_v2_training.sh
+D_MODEL=256 NUM_LAYERS=8 ./run_mamba_v2_training.sh
 
 # Monitor
 tail -f training_v2_output.log
@@ -131,11 +131,15 @@ Input sequence: [input_tokens, query_tokens]
 Forward pass (→):
   Layer 0: Process left → right
   Layer 1: Process left → right
+  Layer 2: Process left → right
+  Layer 3: Process left → right
   Result: x_forward (knows about left context)
 
 Backward pass (←):
-  Layer 2: Process right ← left (reversed)
-  Layer 3: Process right ← left (reversed)
+  Layer 4: Process right ← left (reversed)
+  Layer 5: Process right ← left (reversed)
+  Layer 6: Process right ← left (reversed)
+  Layer 7: Process right ← left (reversed)
   Result: x_backward (knows about right context)
 
 Combine:
@@ -183,7 +187,7 @@ Output: Smooth, coherent field
 
 ```bash
 D_MODEL=256        # Half of V1 (512)
-NUM_LAYERS=4       # Total MAMBA layers (2 forward + 2 backward)
+NUM_LAYERS=8       # Total MAMBA layers (4 forward + 4 backward)
 PERCEIVER_ITER=2   # Number of perceiver iterations
 PERCEIVER_HEADS=8  # Attention heads
 ```
@@ -207,7 +211,7 @@ DEVICE=auto
 ```
 ASF/
 ├── train_mamba_v2.py              # V2 implementation
-│   ├── BidirectionalMAMBA         # Split forward/backward
+│   ├── BidirectionalMAMBA         # 4 forward + 4 backward layers
 │   ├── LightweightPerceiver       # Query self-attention
 │   └── MAMBADiffusionV2           # Complete model
 │
@@ -359,7 +363,7 @@ python eval_sde_multiscale.py \
 # Modify train_mamba_v2.py
 model = MAMBADiffusionV2(
     d_model=256,
-    num_layers=6,              # More layers
+    num_layers=12,             # More layers (6 forward + 6 backward)
     perceiver_iterations=3,    # More iterations
     perceiver_heads=16,        # More heads
 )
@@ -408,10 +412,10 @@ After training V2, you should see:
 ## 🎉 Summary
 
 **V2 solves the speckle problem through**:
-1. ✅ Bidirectional MAMBA (full context)
+1. ✅ Bidirectional MAMBA (4 forward + 4 backward = 8 layers for full context)
 2. ✅ Query self-attention (spatial smoothing)
 3. ✅ Iterative refinement (coarse → fine)
-4. ✅ Only 14% more compute
+4. ✅ Increased depth with 53% fewer parameters (d_model=256)
 
 **Expected**:
 - **70-80% speckle reduction**
